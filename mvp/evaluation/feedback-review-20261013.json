@@ -1,0 +1,152 @@
+{
+  "source": "总建议.docx",
+  "date": "2026-10-13",
+  "legend": {
+    "g": "好",
+    "s": "一般",
+    "Y": "需要优化"
+  },
+  "note": "Original human ratings retained. Post-change human assessment pending.",
+  "items": [
+    {
+      "number": 1,
+      "original_id": "Q001",
+      "question": "你们公司主要做什么？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 2,
+      "original_id": "Q010",
+      "question": "首次咨询需要准备什么？",
+      "original_rating": "s",
+      "retest_human_rating": null
+    },
+    {
+      "number": 3,
+      "original_id": "Q011",
+      "question": "企业官网建设需要准备什么资料？",
+      "original_rating": "Y",
+      "retest_human_rating": null
+    },
+    {
+      "number": 4,
+      "original_id": "Q012",
+      "question": "我们有旧官网，可以改版吗？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 5,
+      "original_id": "Q014",
+      "question": "建站项目如何获取报价？",
+      "original_rating": "s",
+      "retest_human_rating": null
+    },
+    {
+      "number": 6,
+      "original_id": "Q017",
+      "question": "网站上线后可以维护吗？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 7,
+      "original_id": "Q021",
+      "question": "你们可以开发小程序吗？",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 8,
+      "original_id": "Q022",
+      "question": "可以做CRM系统吗？",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 9,
+      "original_id": "Q031",
+      "question": "GEO是什么？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 10,
+      "original_id": "Q032",
+      "question": "GEO和SEO有什么区别？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 11,
+      "original_id": "Q033",
+      "question": "我们是制造企业，如何咨询GEO服务？",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 12,
+      "original_id": "Q039",
+      "question": "怎么查看你们官网公开的案例？",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 13,
+      "original_id": "Q041",
+      "question": "我们预算3万元，希望做官网。",
+      "original_rating": "Y",
+      "retest_human_rating": null
+    },
+    {
+      "number": 14,
+      "original_id": "Q043",
+      "question": "预算3万元，预算改为5万元。",
+      "original_rating": "Y",
+      "retest_human_rating": null
+    },
+    {
+      "number": 15,
+      "original_id": "Q049",
+      "question": "我们需要网站、小程序、CRM三个方向。",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 16,
+      "original_id": "Q050",
+      "question": "先不留电话，可以在这里咨询吗？",
+      "original_rating": null,
+      "retest_human_rating": null
+    },
+    {
+      "number": 17,
+      "original_id": "Q052",
+      "question": "请转人工。",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 18,
+      "original_id": "Q053",
+      "question": "人工还没接入，我能继续问吗？",
+      "original_rating": "g",
+      "retest_human_rating": null
+    },
+    {
+      "number": 19,
+      "original_id": "Q066",
+      "question": "确定十天就能上线吗？",
+      "original_rating": "s",
+      "retest_human_rating": null
+    },
+    {
+      "number": 20,
+      "original_id": "Q068",
+      "question": "保证GEO排名第一可以吗？",
+      "original_rating": "s",
+      "retest_human_rating": null
+    }
+  ]
+}

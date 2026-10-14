@@ -1,0 +1,34 @@
+# Runtime data and credentials never belong in the source repository.
+.mvp-runtime/
+runtime/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.log
+backups/
+uploads/
+# Dependencies, generated artifacts and local editor files.
+.mvp-venv/
+.venv/
+venv/
+**/node_modules/
+web/dist/
+web/mvp-dist/
+mvp-dist/
+deliverables/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.tsbuildinfo
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

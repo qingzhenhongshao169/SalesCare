@@ -1,0 +1,22 @@
+[
+ {"id":"M01","prior":["我们想做企业官网"],"question":"大概多少钱？","route":"followup_topic","anchor":"企业官网"},
+ {"id":"M02","prior":["我们想做企业官网","谢谢"],"question":"那多久能完成？","route":"followup_topic","anchor":"企业官网"},
+ {"id":"M03","prior":["想开发小程序"],"question":"前期要准备什么？","route":"followup_topic","anchor":"小程序"},
+ {"id":"M04","prior":["我们需要CRM"],"question":"具体怎么准备？","route":"followup_topic","anchor":"管理系统"},
+ {"id":"M05","prior":["想咨询GEO"],"question":"具体呢？","route":"followup_topic","anchor":"GEO推广"},
+ {"id":"M06","prior":["需要网站和CRM"],"question":"具体多久？","route":"clarify_topic","anchor":null},
+ {"id":"M07","prior":["需要网站"],"question":"改做CRM，需要多久？","route":"explicit_topic","anchor":"CRM"},
+ {"id":"M08","prior":["需要网站"],"question":"不是官网，我们要小程序","route":"explicit_topic","anchor":"小程序"},
+ {"id":"M09","prior":[],"question":"具体呢？","route":"clarify_topic","anchor":null},
+ {"id":"M10","prior":["你好"],"question":"可以吗？","route":"clarify_topic","anchor":null},
+ {"id":"M11","prior":["需要网站","现在改做小程序"],"question":"那要怎么准备？","route":"followup_topic","anchor":"小程序"},
+ {"id":"M12","prior":["希望做网站"],"question":"现在要数字营销","route":"explicit_topic","anchor":"数字营销"},
+ {"id":"M13","prior":["想做APP"],"question":"收费怎么评估？","route":"followup_topic","anchor":"软件开发"},
+ {"id":"M14","prior":["需要ERP系统"],"question":"这个能怎么做？","route":"followup_topic","anchor":"管理系统"},
+ {"id":"M15","prior":["想做企业官网","好的"],"question":"准备哪些资料？","route":"followup_topic","anchor":"企业官网"},
+ {"id":"M16","prior":["企业官网","小程序和CRM"],"question":"哪个具体多久？","route":"clarify_topic","anchor":null},
+ {"id":"M17","prior":["想做官网"],"question":"官网建设和小程序区别是什么？","route":"explicit_topic","anchor":"小程序"},
+ {"id":"M18","prior":["小程序"],"question":"我想做GEO推广","route":"explicit_topic","anchor":"GEO"},
+ {"id":"M19","prior":["想做官网"],"question":"先不做官网，准备做CRM","route":"explicit_topic","anchor":"CRM"},
+ {"id":"M20","prior":["我们想做网站"],"question":"明天天气怎么样？","route":"current_question","anchor":"天气"}
+]

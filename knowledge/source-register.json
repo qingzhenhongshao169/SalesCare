@@ -1,0 +1,231 @@
+{
+  "collected_at": "2026-10-09",
+  "requested": 42,
+  "succeeded": 37,
+  "tls_note": "Public-source research fetch used an unverified certificate chain; model API TLS verification remains enabled. See docs/biaofun-integration.md.",
+  "sources": [
+    {
+      "url": "https://www.biaofun.com/",
+      "sha256": "e953a379deffb02a03a895d3be2ff58539e58e47560bcfcb74b9cfdb61e469bc",
+      "characters": 3411,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/contact",
+      "sha256": "46e33c980750aecc9fbdc15d443bb8bb0947ed6ebb19296d918ef3dc230d9bef",
+      "characters": 3825,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/service",
+      "sha256": "a06c3ceb51031757d9a3c3669d2c4e72f3ea6304b7fc3b7d60edc12354e3d81e",
+      "characters": 1493,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/dingzhi",
+      "sha256": "6b537c4707aef386d421188d9e20d6550445020274caab875bb4cac29b4e3cf4",
+      "characters": 1366,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/webcms",
+      "sha256": "593988bfd90e1d6fa127b9f3a72926b226ac486a0f8a187640aee7de28838ffa",
+      "characters": 1870,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/yunying",
+      "sha256": "bf1df3817d5d763578d0cd256c6448d50646b0d1cbc7c7d047c0d24ec04204eb",
+      "characters": 2442,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "/case",
+      "error": "HTTPStatusError",
+      "used_in_knowledge": false
+    },
+    {
+      "url": "/case/24.html",
+      "error": "HTTPStatusError",
+      "used_in_knowledge": false
+    },
+    {
+      "url": "/case/26.html",
+      "error": "HTTPStatusError",
+      "used_in_knowledge": false
+    },
+    {
+      "url": "/case/28.html",
+      "error": "HTTPStatusError",
+      "used_in_knowledge": false
+    },
+    {
+      "url": "/case/29.html",
+      "error": "HTTPStatusError",
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq",
+      "sha256": "36331a8313aa017fce566351a76eeb877a95bc3e3a7d35466c00f063b6445e31",
+      "characters": 2527,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/news/372.html",
+      "sha256": "db8c0189b02ef7b919c3687df12d22050e00e47e479c89caac4982a5b794a5e7",
+      "characters": 3576,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/news/373.html",
+      "sha256": "ceaade3664886069d3a395585e5198e7730f487f1e95dae124d606f65b353d98",
+      "characters": 3471,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/news/374.html",
+      "sha256": "491729b074ceac4cda1bfed8fee5dfb2517533d8be588e4a8be2c250ae49e3a3",
+      "characters": 3503,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/news/375.html",
+      "sha256": "6ba350653391fb5337f32c3224d08fc31f459ca3ab9e84158ff4fc5bab7f9643",
+      "characters": 3700,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/news/376.html",
+      "sha256": "fe5aac3550f61fbd73ae0e6d3b6f1462452b47e7d000b15d2df2e56dc1b10d8e",
+      "characters": 4323,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/371.html",
+      "sha256": "17239b6f70da8d9880dab3ceb956e7d21152b22b5d299c6cccce352c362acf87",
+      "characters": 5565,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/341.html",
+      "characters": 2527,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/342.html",
+      "characters": 2010,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/344.html",
+      "characters": 2367,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/345.html",
+      "characters": 1920,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/346.html",
+      "characters": 1854,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/347.html",
+      "characters": 1844,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/348.html",
+      "characters": 1901,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/349.html",
+      "characters": 1904,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/350.html",
+      "characters": 1912,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/351.html",
+      "characters": 2046,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/352.html",
+      "characters": 2087,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/353.html",
+      "characters": 2059,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/354.html",
+      "characters": 2257,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/355.html",
+      "characters": 2394,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/372.html",
+      "characters": 4361,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/373.html",
+      "characters": 5161,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/374.html",
+      "characters": 5079,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/375.html",
+      "characters": 5187,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/381.html",
+      "characters": 7571,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/382.html",
+      "characters": 7463,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/383.html",
+      "characters": 8322,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/386.html",
+      "characters": 8277,
+      "used_in_knowledge": false
+    },
+    {
+      "url": "https://www.biaofun.com/faq/387.html",
+      "characters": 7306,
+      "used_in_knowledge": true
+    },
+    {
+      "url": "https://www.biaofun.com/faq/388.html",
+      "characters": 7741,
+      "used_in_knowledge": true
+    }
+  ]
+}
