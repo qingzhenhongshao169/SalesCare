@@ -26,6 +26,8 @@ def operational_reply(question):
 
 def resolve_question(question,history):
     """Use explicit user topics only. Never anchor on AI-generated claims."""
+    from server.project_scope import project_history, project_text
+    history=project_history(history);question=project_text(question)
     if re.search(r'天气|股票|彩票|医生|投资收益',question):return question,None,'current_question'
     if topics(question):return question,None,'explicit_topic'
     if len(question)>80 or not re.search(r'这个|那个|这些|具体|怎么|如何|多久|多少钱|报价|收费|准备|资料|那|可以吗',question):
@@ -62,17 +64,30 @@ def support_fallback(records,query):
     best=None
     for record in records:
         if not document or record.get('document_id')!=document:continue
+        headers=None
         for line in record['content'].splitlines():
-            if not line.strip().startswith('|'):continue
-            cells=[x.strip() for x in line.strip().strip('|').split('|')]
-            if len(cells)!=2 or not cells[1] or '参数与页面分组' in cells[0] or re.fullmatch(r'[-: ]+',cells[0]):continue
-            field=cells[0].split(' / ')[-1];value=cells[1]
+            if '|' not in line:headers=None;continue
+            raw=line.strip()
+            if raw.startswith('|'):
+                raw=raw[1:]
+                if raw.endswith('|'):raw=raw[:-1]
+            cells=[x.strip() for x in raw.split('|')]
+            if len(cells)<2 or all(not c or re.fullmatch(r'[-: ]+',c) for c in cells):continue
+            if cells[0] in ('字段','项目','参数','属性','名称','参数与页面分组'):
+                headers=cells;continue
+            if not cells[0]:continue
+            field=cells[0].split(' / ')[-1];value=cells[1] or '未提供'
+            # Keep other columns (conditions, units, exceptions) attached to the
+            # selected row, for both native and Markdown table serialization.
+            if len(cells)>2:
+                value='；'.join((headers[i]+'：' if headers and i<len(headers) else '')+(cell or '未提供') for i,cell in enumerate(cells[1:],1))
             terms={field[i:i+2] for i in range(len(field)-1)}-{'是否','产品','支持','什么','多少'}
             score=sum(t in query for t in terms)+(10 if field in query else 0)
             if score>0 and (not best or score>best[0]):best=(score,field,value,record)
     if best:
         _,field,value,record=best
-        return record['title'].split(' · ')[0]+'的'+field+'：'+value+'。',[record]
+        context=record['content'].split('\n',1)[0] if '\n' in record['content'] and '|' not in record['content'].split('\n',1)[0] else record['title']
+        return context+'的'+field+'：'+value+'。',[record]
     if document:
         if re.search(r'多少钱|价格|售价|报价',query) and not any(re.search(r'\d+(?:\.\d+)?\s*元|[¥￥]\s*\d',r['content']) for r in records):
             return '当前检索到的资料里没有可核对的售价，需要由工作人员进一步核实。',[first]
@@ -84,6 +99,8 @@ def support_fallback(records,query):
 
 def contextual_fallback(records,history):
     """Useful, bounded recovery using user requirements; no supplier promises."""
+    from server.project_scope import project_history
+    history=project_history(history)
     planned=scene_fallback(history,records)
     if planned:return planned
     user=[m['content'] for m in history if m['role']=='user']
@@ -94,7 +111,7 @@ def contextual_fallback(records,history):
     if records:return grounded_fallback(records)
     if topic:
         return '您想了解'+ '、'.join(topic)+'。可以先从要解决的问题和实际使用场景梳理思路，具体服务范围与报价再核实。您最希望解决哪一个问题？',[]
-    return '我可以先帮您梳理需求、比较思路。您目前最想解决什么问题？涉及本企业的具体价格、服务范围或承诺，我会以确认过的资料为准。',[]
+    return '可以呀，先说说您最想解决什么问题，我们再一起梳理适合的方向。',[]
 
 def social_intent(question):
     value=re.sub(r'[\s，,。.!！?？～~]+','',question).lower()

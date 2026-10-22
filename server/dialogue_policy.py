@@ -2,12 +2,14 @@
 import re
 from difflib import SequenceMatcher
 from .answer_policy import TOKEN, quantity
+from .requirements import BUDGET, budget_update, timeline_update
+from .turn_plan import direction_state, direction_mentions, build_turn_plan, task_fallback
+from .project_scope import project_history
 
-POLICY_VERSION = 'feedback-20261013-v5'
+POLICY_VERSION = 'p1-project-scope-20261020-v9'
 TOPICS = [('企业官网', r'官网|网站|网页|建站'), ('小程序', r'小程序|微商城'),
           ('管理系统', r'CRM|ERP|OA|管理系统|业务系统'), ('软件开发', r'软件|APP'),
           ('GEO推广', r'GEO|AI搜索|生成式'), ('数字营销', r'数字营销|SEM|SEO|代运营')]
-BUDGET = re.compile(r'预算(?:上限|是|为|改为|改成|只有|约|大概)?[ \t]*([\d一二两三四五六七八九十百千万,.]+[ \t]*(?:万元|千元|元|万|千)?)')
 PAGES = re.compile(r'\d+\s*(?:个(?:独立设计的|独立)?页面|页面|页|条(?:产品|新闻|内容))')
 ASKS = {
     'materials': r'资料|文案|图片|素材',
@@ -21,10 +23,11 @@ ASKS = {
 def user_topics(text):
     found=[]
     for name, pattern in TOPICS:
-        if any(not re.search(r'不做|不是|不要|先不做', text[max(0,m.start()-5):m.start()])
+        if any(not re.search(r'不做|不是|不要|先不做|不需要|取消', text[max(0,m.start()-10):m.start()])
+               and not re.match(r'\s*(?:暂时|先)?(?:不做|不建|不要|取消)',text[m.end():])
                for m in re.finditer(pattern,text,re.I)):
             found.append(name)
-    return found
+    return list(dict.fromkeys(found+direction_mentions(text)))
 
 
 def question_kind(text):
@@ -35,8 +38,9 @@ def question_kind(text):
 
 def dialogue_context(history):
     """Only explicit user evidence within the caller's message-sequence boundary."""
+    history=project_history(history)
     current=next((m['content'] for m in reversed(history) if m['role']=='user'),'')
-    facts={}; topic=[]; last_question=''; asked=[]; previous_budget=None
+    facts={}; topic=[]; last_question=''; asked=[]; budget_changed=False; current_budget_update=None
     for m in history:
         text=m['content']
         if m['role']!='user':
@@ -47,19 +51,23 @@ def dialogue_context(history):
                 if kind:asked.append(kind)
             continue
         explicit=user_topics(text)
-        if explicit:
+        chosen=direction_state([{'role':'user','content':text}])
+        if explicit and chosen['candidates']:
             if topic and not set(topic).intersection(explicit):
                 facts={}; asked=[]; last_question=''
             topic=explicit
-        budgets=[match for match in BUDGET.finditer(text)
-                 if not re.search(r'不是|并非|没有',text[max(0,match.start()-4):match.start()])]
-        if budgets:
+        budget=budget_update(text,previous_budget=facts.get('budget'))
+        current_budget_update=budget
+        budget_changed=False
+        if budget and budget['action']=='set':
             previous_budget=facts.get('budget')
-            facts['budget']=budgets[-1].group(0)
-        if re.search(r'预算.{0,8}(?:没定|未定|不确定|取消|先不设)',text):facts.pop('budget',None)
-        time_match=re.search(r'(?:希望|期望|预计|计划|上线时间|尽快)[^，。；\n]{0,12}?(?:[\d一二两三四五六七八九十]+\s*(?:周|星期|天|个月)|下周|本月|下个月)',text)
-        if time_match:facts['timeline']=time_match.group(0)
-        if re.search(r'时间.{0,6}(?:没定|未定|不确定)',text):facts.pop('timeline',None)
+            facts['budget']=budget['text']
+            previous=budget_update(previous_budget) if previous_budget else None
+            budget_changed=bool(previous and previous['value']!=budget['value'])
+        elif budget and budget['action']=='clear':facts.pop('budget',None)
+        timeline=timeline_update(text)
+        if timeline and timeline['action']=='set':facts['timeline']=timeline['text']
+        elif timeline and timeline['action']=='clear':facts.pop('timeline',None)
         goal=re.search(r'展示公司|展示企业|公司形象|品牌展示|展示产品|介绍产品|提交询价|客户询价|收集询盘',text)
         if goal:facts['goal']=goal.group(0)
         pages=PAGES.findall(text)
@@ -74,25 +82,43 @@ def dialogue_context(history):
             facts['materials']='ready'
         elif question_kind(last_question)=='materials' and re.fullmatch(r'(?:是的[，, ]*)?(?:都有了?|齐了|准备好了)[。！! ]*',text):
             facts['materials']='ready'
-    budget_changed=bool(previous_budget and facts.get('budget') and previous_budget!=facts['budget'])
-    if re.search(r'首次|第一次|初次',current) and re.search(r'准备|要说|说些什么|需要.{0,4}提供',current):scene='first_consultation'
+    direction=direction_state(history)
+    if direction['status']=='selected':topic=direction['candidates']
+    elif direction['status'] in ('undecided','multiple'):
+        topic=list(dict.fromkeys(topic+direction['candidates']))
+    elif direction['evidence']:topic=[]
+    query_topics=user_topics(current)
+    current_choice=direction_state([{'role':'user','content':current}])
+    if query_topics and not current_choice['candidates'] and not current_choice['evidence']:
+        if topic and not set(topic).intersection(query_topics):facts={}
+        topic=query_topics  # Current question subject is not a persisted decision.
+    if direction['status']=='undecided':scene='direction_undecided'
+    elif re.search(r'首次|第一次|初次',current) and re.search(r'准备|要说|说些什么|需要.{0,4}提供',current):scene='first_consultation'
     elif re.search(r'准备|提供|哪些|什么|给哪些',current) and re.search(r'资料|材料|素材|准备什么',current):
         scene='website_materials' if '企业官网' in topic else 'project_materials'
     elif re.search(r'保证|确保|一定|承诺|肯定',current) and re.search(r'排名|询盘|成交|效果|收益',current):scene='effect_boundary'
-    elif re.search(r'上线|工期|交付',current) and re.search(r'多久|几天|确定|保证|能否|能不能|(?:能|可以).{0,4}(?:上线|交付)(?:吗|么|[？?])',current):scene='deadline'
-    elif re.search(r'预算',current) and (budget_changed or re.search(r'改为|改成|更新|调整',current)):scene='budget_update'
+    elif re.search(r'上线|工期|交付|做完|完成',current) and re.search(r'多久|几天|确定|确认|一定|保证|能否|能不能|(?:能|可以).{0,4}(?:上线|交付)(?:吗|么|[？?])',current):scene='deadline'
+    elif (current_budget_update and current_budget_update['action']=='set'
+          and (budget_changed or re.search(r'改|变|更正|调整|更新|不是',current))):scene='budget_update'
     elif re.search(r'报价|多少钱|收费|价格|费用',current):scene='quotation'
     elif facts and ('企业官网' in topic):scene='website_requirements'
     elif len(topic)>1:scene='multiple_services'
     else:scene='business'
     return {'scene':scene,'topics':topic,'user_requirements':facts,'budget_changed':budget_changed,
             'last_question':last_question,'asked_fields':list(dict.fromkeys(asked)),
-            'current_message':current[:1000]}
+            'current_message':current[:1000], 'direction':direction}
 
 
 def quality_issue(answer,history):
+    history=project_history(history)
     """Reject specific, observable misses, not every repeated word or disclaimer."""
     context=dialogue_context(history);facts=context['user_requirements'];scene=context['scene']
+    # A stale budget is wrong on later follow-ups too, not just the correction turn.
+    expected=budget_update(facts.get('budget',''));stated=budget_update(answer)
+    if expected and stated and expected['action']==stated['action']=='set' and expected['value']!=stated['value']:
+        budget_match=BUDGET.search(answer)
+        before=answer[max(0,budget_match.start()-6):budget_match.start()] if budget_match else ''
+        if not re.search(r'原(?:来|先)?|之前|此前|最初',before):return 'stale_budget'
     questions=re.findall(r'[^。！？!?\n]*[？?]',answer)
     if len(questions)>1:return 'multiple_questions'
     if questions:
@@ -152,6 +178,7 @@ def next_website_question(context):
 def scene_fallback(history,records):
     """General preparation/analysis advice with no invented company capability."""
     c=dialogue_context(history);facts=c['user_requirements'];scene=c['scene']
+    if scene=='direction_undecided':return task_fallback(build_turn_plan(history),records)
     if scene=='first_consultation':
         return '不用一开始就准备得很完整。您可以先说想解决什么问题、准备做什么，再补充预算和希望上线的时间；还没确定的部分，也可以在咨询中慢慢梳理。',[]
     if scene=='website_materials':
@@ -161,7 +188,8 @@ def scene_fallback(history,records):
                 '有现成图片和文案也一起准备；暂时不齐，可以先列出已有的。'+
                 ('' if facts.get('goal') else '您希望官网重点展示公司形象，还是也让客户提交询价？')),used
     if scene=='deadline':
-        return '您提到的上线时间可以先作为目标，是否能做到还要结合页面、功能和素材准备情况核算。'+(
+        budget=facts.get('budget')
+        return (('先按您提到的'+budget+'梳理需求。') if budget else '')+'您提到的上线时间可以先作为目标，是否能做到还要结合页面、功能和素材准备情况核算。'+(
             '资料已经备齐的话，下一步可以整理建设范围，请顾问评估排期。' if facts.get('materials')=='ready' else '您目前的文案和图片准备好了吗？'),[]
     if scene=='effect_boundary':
         return '排名或效果不能给您作无条件保证，结果还会受到竞争、内容基础和平台机制影响。可以先梳理您希望在哪些问题下被客户看到，再评估优化方向。',[]
@@ -173,7 +201,9 @@ def scene_fallback(history,records):
     if scene=='budget_update':
         budget=facts.get('budget','最新预算')
         subject='官网' if '企业官网' in c['topics'] else '项目'
-        return '好的，您的'+subject+budget+'，我会按最新需求继续梳理。'+(next_website_question(c) if subject=='官网' else ''),[]
+        phased=('可以先把首期必需内容与后续扩展分开梳理，具体范围、费用与排期还需顾问核算。'
+                if re.search(r'简单|先做|后面|增加功能|分阶段',c['current_message']) else '')
+        return '好的，您的'+subject+budget+'，我会按最新需求继续梳理。'+phased+(next_website_question(c) if subject=='官网' else ''),[]
     if '企业官网' in c['topics'] and (facts or scene=='quotation'):
         parts=[facts[k] for k in ('goal','budget','timeline') if k in facts]
         intro='明白，您想做企业官网'+('，您提到'+ '、'.join(parts) if parts else '')+'。'

@@ -87,9 +87,8 @@ def check_delivery(s,delivery):
     if lead and lead.withdrawn_at:raise PlatformError('stale')
     if m.role=='ai':
         if c.state not in ('AI_ACTIVE','HANDOFF_PENDING'):raise PlatformError('stale')
-        for ref in m.citations:
-            k=s.get(Knowledge,(tid,ref['id']))
-            if not k or k.status!='published' or k.visibility!='public' or k.version!=ref['version'] or (k.expires_at and k.expires_at<=time.time()):raise PlatformError('stale')
+        from .knowledge_retrieval import validate_citations
+        if not validate_citations(s,tid,m.citations,c.channel_id):raise PlatformError('stale')
     if m.role=='human':
         member=s.get(Member,(tid,m.actor_id))
         if not task or task.version!=delivery.task_version or task.status!='claimed' or task.owner_id!=m.actor_id or not member or not member.active or 'agent' not in member.roles or task.skill not in member.skills:raise PlatformError('stale')

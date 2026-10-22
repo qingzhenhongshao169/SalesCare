@@ -10,7 +10,7 @@ export function StatusPill({ children, tone = 'neutral' }: {
 }) { return <span className={'status-pill ' + tone}><span className="status-dot" aria-hidden="true"/>{children}</span>; }
 export function RequirementSummary({ profile = {} }: {
     profile?: D;
-}) { const keys = ['need', 'budget', 'timeline']; const labels: D = { need: '咨询方向', budget: '预算（客户需求）', timeline: '期望上线' }; return <dl className="requirement-list">{keys.map(key => <div key={key}><dt>{labels[key]}</dt><dd title={profile[key]?.evidence || ''}>{profile[key]?.display || '暂未记录'}</dd></div>)}{Object.entries(profile).filter(([key]) => !keys.includes(key)).map(([key, v]) => <div key={key}><dt>{v.label}</dt><dd title={v.evidence || ''}>{v.display}</dd></div>)}</dl>; }
+}) { const keys = ['need', 'budget', 'timeline']; const labels: D = { need: '咨询方向', budget: '预算（客户需求）', timeline: '期望上线' }; return <dl className="requirement-list">{keys.map(key => { const field=profile[key] || (key==='budget'?profile.budget_status:undefined); return <div key={key}><dt>{labels[key]}</dt><dd title={field?.evidence || ''}>{field?.display || '暂未记录'}</dd></div>})}{Object.entries(profile).filter(([key]) => !keys.includes(key)&&key!=='budget_status').map(([key, v]) => <div key={key}><dt>{v.label}</dt><dd title={v.evidence || ''}>{v.display}</dd></div>)}</dl>; }
 export function ServiceSidebar({ cfg, conversation: c, busy, onContact, onStop, onContinue }: {
     cfg: D;
     conversation: D | null;

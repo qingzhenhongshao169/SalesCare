@@ -5,17 +5,20 @@ import threading
 import time
 from sqlalchemy import select
 from .db import transaction,rows,locked
-from .models import Tenant,KBJob,WorkerState
+from .models import Tenant,KBJob,KBDocumentVersion,WorkerState,uid
 from .knowledge_documents import process
 STOP=threading.Event()
 
-def lease(tid):
+def lease(tid,with_token=False):
     with transaction(tid) as s:
         job=s.scalar(rows(s,KBJob,tid).where(KBJob.status.in_(['pending','leased']),KBJob.lease_until<time.time()).order_by(KBJob.created_at).with_for_update(skip_locked=True).limit(1))
         if not job:return None
-        if job.attempts>=3:job.status='failed';job.error='failed';return None
-        job.status='leased';job.attempts+=1;job.lease_until=time.time()+300
-        return job.id
+        if job.attempts>=3:
+            job.status='failed';job.stage='failed';job.error='lease_exhausted';job.lease_token=''
+            s.get(KBDocumentVersion,(tid,job.version_id)).status='failed'
+            return None
+        job.status='leased';job.attempts+=1;job.lease_until=time.time()+300;job.lease_token=uid()
+        return (job.id,job.lease_token) if with_token else job.id
 
 def main():
     signal.signal(signal.SIGINT,lambda *_:STOP.set());signal.signal(signal.SIGTERM,lambda *_:STOP.set())
@@ -33,8 +36,8 @@ def main():
         try:
             with transaction() as s:tenants=list(s.scalars(select(Tenant.id).where(Tenant.active==True)))
             for tid in tenants:
-                jid=lease(tid)
-                if jid:process(tid,jid)
+                attempt=lease(tid,with_token=True)
+                if attempt:process(tid,*attempt)
         except Exception:logging.error('Document worker cycle failed; durable retry retained.')
         STOP.wait(1)
 

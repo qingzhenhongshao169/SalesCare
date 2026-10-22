@@ -6,7 +6,7 @@ numbers as permission to quote the same price or promise the same deadline.
 from decimal import Decimal
 import re
 
-TOKEN = re.compile(r'(?P<number>\d[\d,]*(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)(?P<unit>\s*(?:万元|千元|元|万|千|个月|星期|周|天|月|个(?:独立设计的|独立|单独)?页面|页面|页|人|个|条|项|%|％))?')
+TOKEN = re.compile(r'(?P<number>\d[\d,]*(?:\.\d+)?|[零〇一二两三四五六七八九十百千万]+)(?P<unit>\s*(?:万元|千元|元|万|千|[kK](?:元)?(?![a-zA-Z])|块钱?|个月|星期|周|天|月|个(?:独立设计的|独立|单独)?页面|页面|页|人|个|条|项|%|％))?')
 CHINESE = {'零':0,'〇':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9}
 
 def quantity(match):
@@ -20,8 +20,8 @@ def quantity(match):
             else:section+=(value or 1)*{'十':10,'百':100,'千':1000}[ch];value=0
         amount=Decimal(total+section+value)
     else:amount=Decimal(raw)
-    multiplier={'万元':10000,'万':10000,'千元':1000,'千':1000}.get(unit,1)
-    dimension=('money' if unit in ('万元','万','千元','千','元') else
+    multiplier={'万元':10000,'万':10000,'千元':1000,'千':1000,'k':1000,'k元':1000}.get(unit.lower(),1)
+    dimension=('money' if unit.lower() in ('万元','万','千元','千','元','k','k元','块','块钱') else
                'week' if unit in ('周','星期') else 'page' if '页面' in unit or unit=='页' else
                'month' if unit in ('月','个月') else unit)
     return amount*multiplier,dimension
@@ -32,6 +32,17 @@ def numbers_supported(answer,evidence,history):
     customer_text='\n'.join(m['content'] for m in history if m['role']=='user')
     known={quantity(m) for m in TOKEN.finditer(evidence)}-{None}
     customer={quantity(m) for m in TOKEN.finditer(customer_text)}-{None}
+    # Monetary aliases and contextual corrections share the profile parser.
+    # This accepts “预算8w” -> 80000元 without treating hardware “8W” as money.
+    from .requirements import budget_update
+    latest_budget=None
+    for message in history:
+        if message['role']!='user':continue
+        update=budget_update(message['content'],previous_budget=latest_budget)
+        if update and update['action']=='set':
+            latest_budget=update['value']
+            customer.add((Decimal(str(latest_budget)),'money'))
+        elif update:latest_budget=None
     clauses=[(sentence,clause) for sentence in re.split(r'[。；;！!\n]',answer)
              for clause in re.split(r'[，]|(?<!\d),|,(?!\d)',sentence)]
     for sentence,clause in clauses:
