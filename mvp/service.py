@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, func
 from server.model_gateway import protect
 from server.domain import company_profile
+from server.requirements import update_profile_requirements
 from .db import rows, locked, database_time, serialization_lock
 from .models import *
 from .security import serialize
@@ -86,6 +87,10 @@ def check_ready(session,tid):
             'website_ready':has_knowledge,'immediate_ready':qualified and in_hours(config,time.time()) and bool(candidates(session,tid,config.required_skill,time.time()))}
 
 def mark_profile(session,c,text):
+    from server.project_scope import restart_position, project_text
+    if restart_position(text) is not None:
+        c.profile={}
+    text=project_text(text)
     offers=session.scalars(rows(session,Offer,c.tenant_id).where(Offer.active==True)).all()
     knowledge=session.scalars(rows(session,Knowledge,c.tenant_id).where(Knowledge.status=='published',Knowledge.visibility=='public')).all()
     d={'offers':[{'id':o.id,'tags':o.tags,'active':o.active,'source_url':o.knowledge_id} for o in offers],
@@ -96,7 +101,11 @@ def mark_profile(session,c,text):
         if not social_intent(text) and not re.fullmatch(r'(?:请)?转人工[。！!]*',text.strip()):
             clean=redacted_text(text)
             data['profile']['need']={'label':'咨询内容','value':clean[:140],'display':clean[:140],'evidence':clean,'source':'用户原话','confirmed':True}
-    else:company_profile(d,data,text)
+    else:
+        company_profile(d,data,text)
+        # Legacy offer tags must not turn a question into a confirmed choice.
+        data['profile'].pop('need',None)
+        if 'need' in c.profile:data['profile']['need']=c.profile['need']
     # Keep the latest explicit statement, skipping negations, questions and ranges.
     original=dict(c.profile)
     def affirmative(match):
@@ -104,18 +113,40 @@ def mark_profile(session,c,text):
         suffix=text[match.end():match.end()+6]
         return not re.search(r'不是|并非|没有|不超过|至少|超过|不到',prefix) and not re.match(r'\s*[-–~到至]\s*\d',suffix)
     people=[m for m in re.finditer(r'(\d+)\s*人',text) if affirmative(m)]
-    budget=[m for m in re.finditer(r'预算(?:上限|是|为|改为|改成|只有|约|大概)?\s*(\d+(?:\.\d+)?)\s*(万|千)?',text) if affirmative(m)]
     if people:data['profile']['people']={'label':'团队规模','value':int(people[-1][1]),'display':people[-1][1]+' 人','evidence':text,'source':'用户原话','confirmed':True}
     elif 'people' in original:data['profile']['people']=original['people']
     else:data['profile'].pop('people',None)
-    if budget:
-        value=float(budget[-1][1])*{None:1,'千':1000,'万':10000}[budget[-1][2]]
-        data['profile']['budget']={'label':'预算范围','value':value,'display':f'¥{value:,.0f}','evidence':text,'source':'用户原话','confirmed':True}
-    elif 'budget' in original:data['profile']['budget']=original['budget']
+    if 'budget' in original:data['profile']['budget']=original['budget']
     else:data['profile'].pop('budget',None)
-    timeline=re.search(r'(?:计划|希望|期望|预计).{0,6}(下周|本月|下个月|\d{4}年\d{1,2}月\d{1,2}日)',text)
-    if timeline:data['profile']['timeline']={'label':'计划时间','value':timeline[1],'display':timeline[1],'evidence':text,'source':'用户原话','confirmed':True}
-    c.profile=data['profile']
+    c.profile=update_profile_requirements(data['profile'],text)
+    if company(session,c.tenant_id).service_mode!='general_support':
+        from server.turn_plan import direction_state, build_turn_plan
+        history=session.scalars(rows(session,Message,c.tenant_id).where(Message.conversation_id==c.id,
+            Message.sequence<=c.sequence,Message.role=='visitor').order_by(Message.sequence.desc()).limit(200)).all()
+        messages=[{'role':'visitor','text':m.text} for m in reversed(history)]
+        from server.project_scope import project_history
+        active=project_history(messages)
+        if any(restart_position(m['text']) is not None for m in messages):
+            projected={}
+            for m in active:projected=update_profile_requirements(projected,m['text'])
+            # Also repairs an existing stale projection without replaying an
+            # old project's field into the new project on the next message.
+            c.profile={k:v for k,v in c.profile.items() if k not in ('need','budget','timeline','budget_status') and any(v.get('evidence')==m['text'] for m in active)}
+            c.profile={**c.profile,**projected}
+        state=direction_state(active)
+        plan=build_turn_plan(active)
+        if plan['budget_status']=='unset':
+            c.profile={**c.profile,'budget_status':{'label':'预算状态','value':'unset','display':'未定',
+                'evidence':plan['budget_evidence'],'source':'用户原话','confirmed':False}}
+        else:c.profile={k:v for k,v in c.profile.items() if k!='budget_status'}
+        if state['candidates']:
+            field={'label':'咨询方向','value':' / '.join(state['candidates']),
+                   'display':' / '.join(state['candidates'])+('（未定）' if state['status']=='undecided' else ''),
+                   'status':state['status'],'candidates':state['candidates'],'evidence':state['evidence'],
+                   'source':'用户原话','confirmed':state['status']=='selected'}
+            c.profile={**c.profile,'need':field}
+        elif state['evidence']:
+            c.profile={k:v for k,v in c.profile.items() if k!='need'}
 
 def conversation_view(session,p,c):
     out=serialize(c)
@@ -123,7 +154,8 @@ def conversation_view(session,p,c):
     member=session.get(Member,(p['tenant'],p['id'])) if p['kind']=='employee' else None
     pii_allowed=bool(member and 'agent' in member.roles and task and task.owner_id==p['id'] and task.status=='claimed' and task.skill in member.skills)
     messages=session.scalars(rows(session,Message,p['tenant']).where(Message.conversation_id==c.id).order_by(Message.sequence)).all()
-    out['messages']=[serialize(m) for m in messages]
+    from .case_recommendations import public_cards
+    out['messages']=[{**serialize(m),'case_recommendations':public_cards(session,p['tenant'],c.channel_id,m.case_recommendations)} for m in messages]
     if c.channel_id:
         channel=session.get(Channel,(p['tenant'],c.channel_id))
         out['channel_name']=channel.name if channel else '渠道已停用'
@@ -152,12 +184,14 @@ def conversation_view(session,p,c):
         diagnostics=session.scalars(rows(session,Usage,p['tenant']).where(Usage.detail['conversation_id'].as_string()==c.id).order_by(Usage.created_at.desc()).limit(20)).all()
         out['answer_diagnostics']=[{'id':u.id,'kind':u.kind,'outcome':u.outcome,'latency_ms':u.latency_ms,'detail':u.detail}
                                    for u in diagnostics]
-    keys=set(c.profile.get('need',{}).get('value','').split('、'))
-    valid={k.id for k in session.scalars(rows(session,Knowledge,p['tenant']).where(Knowledge.status=='published',Knowledge.visibility=='public')).all()
-           if not k.expires_at or k.expires_at>time.time()}
-    if c.channel_id and channel and channel.config.get('knowledge_ids'):valid.intersection_update(channel.config['knowledge_ids'])
-    out['recommendations']=[serialize(o) for o in session.scalars(rows(session,Offer,p['tenant']).where(Offer.active==True)).all()
-        if o.knowledge_id in valid and keys.intersection(o.tags) and (o.price is None or c.profile.get('budget',{}).get('value',float('inf'))>=o.price)]
+    keys=set(c.profile.get('need',{}).get('candidates') or re.split(r'、| / ',c.profile.get('need',{}).get('value','')))
+    from .offer_evidence import current_offer_records, supports_public_price
+    offers=session.scalars(rows(session,Offer,p['tenant']).where(Offer.active==True)).all()
+    valid=current_offer_records(session,p['tenant'],{o.knowledge_id for o in offers if o.knowledge_id},c.channel_id)
+    out['recommendations']=[serialize(o) for o in offers
+        if o.knowledge_id in valid and supports_public_price(valid[o.knowledge_id],o.name,o.price)
+        and keys.intersection(o.tags) and (o.price is None or c.profile.get('budget',{}).get('value',float('inf'))>=o.price)]
+    if c.profile.get('need',{}).get('status')=='undecided':out['recommendations']=[]
     return out
 
 def handoff(session,p,c,lead=None):
@@ -189,6 +223,12 @@ def handoff(session,p,c,lead=None):
             phone_cipher=protect(lead['phone']) if lead.get('phone') else '',consent_at=now,consent_text=CONSENT))
         c.name=lead['name']
         if task:
+            # This is the first explicit contact commitment, not a retry or a
+            # change to the historical messages. Invalidate old delivery leases.
+            audit(session,tid,p['id'],'task.contact_cycle_started',task.id,
+                  {'previous_attempted_at':task.attempted_at,'previous_reached_at':task.reached_at,
+                   'previous_version':task.version,'start_at':start_at})
+            task.attempted_at=None;task.reached_at=None;task.version+=1
             task.mode=mode;task.accepted_at=now;task.start_at=start_at;task.deadline_at=start_at+300;task.sla='scheduled' if scheduled else 'running'
         else:
             task=Task(tenant_id=tid,conversation_id=c.id,skill=skill,accepted_at=now,start_at=start_at,

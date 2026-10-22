@@ -1,8 +1,30 @@
 from contextlib import contextmanager
 from functools import lru_cache
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, select, text, event
 from sqlalchemy.orm import Session
 from .config import settings
+
+
+@event.listens_for(Session, 'after_flush')
+def notify_committed_work(session, _context):
+    # PostgreSQL delivers NOTIFY only on successful commit, including messages
+    # inserted by channel adapters. A rollback cannot wake a nonexistent task.
+    from .models import AIJob, Message, Conversation
+    from .realtime import JOB_CHANNEL, MESSAGE_CHANNEL, conversation_key
+    if any(isinstance(row, AIJob) for row in session.new):
+        session.execute(text('SELECT pg_notify(:channel, :payload)'), {'channel':JOB_CHANNEL, 'payload':''})
+    new_conversations=[row for row in session.new if isinstance(row,Conversation)]
+    if new_conversations and settings()['mode']=='test':
+        from .models import AnalyticsRecord
+        # Explicit synthetic defaults belong only to isolated QA environments.
+        for row in new_conversations:
+            if not any(isinstance(x,AnalyticsRecord) and x.tenant_id==row.tenant_id and x.id==row.id for x in session.new):
+                session.add(AnalyticsRecord(tenant_id=row.tenant_id,id=row.id,data_kind='test'))
+    conversations = {(row.tenant_id, row.conversation_id) for row in session.new if isinstance(row, Message)}
+    conversations.update((row.tenant_id, row.id) for row in session.dirty if isinstance(row, Conversation))
+    for tenant, conversation in conversations:
+        session.execute(text('SELECT pg_notify(:channel, :payload)'),
+                        {'channel':MESSAGE_CHANNEL, 'payload':conversation_key(tenant, conversation)})
 
 
 @lru_cache

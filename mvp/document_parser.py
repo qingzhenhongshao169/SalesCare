@@ -45,13 +45,20 @@ def normalize(path,filename):
         add('table','\n'.join(' | '.join(row) for row in rows),location,rows=rows,header=rows[0])
     if suffix in ('.txt','.md','.markdown'):
         text=decode(path.read_bytes())
-        for n,part in enumerate(re.split(r'\n\s*\n',text),1):
-            match=re.match(r'^(#{1,6})\s+(.+)',part)
+        paragraph=[];start=1;fenced=False
+        def flush():
+            if paragraph:add('paragraph','\n'.join(paragraph),{'paragraph':start})
+            paragraph.clear()
+        for n,line in enumerate(text.splitlines(),1):
+            if re.match(r'^\s*(?:```|~~~)',line):fenced=not fenced
+            match=re.match(r'^\s{0,3}(#{1,6})\s+(.+)',line) if not fenced else None
             if match:
-                add('heading',match[2],{'paragraph':n},level=len(match[1]))
-                rest=part[match.end():].strip()
-                if rest:add('paragraph',rest,{'paragraph':n})
-            else:add('paragraph',part,{'paragraph':n})
+                flush();add('heading',match[2],{'paragraph':n},level=len(match[1]))
+            elif not line.strip():flush()
+            else:
+                if not paragraph:start=n
+                paragraph.append(line)
+        flush()
     elif suffix=='.docx':
         from docx import Document
         from docx.text.paragraph import Paragraph
@@ -99,28 +106,34 @@ def normalize(path,filename):
                 for number,rows in enumerate(page.extract_tables(),1):table(rows,{'page':n,'table':number})
     if not blocks:raise ParseError('ocr_required' if issues else 'empty')
     return {'schema':'salescare.document.v1','title':title,'filename':filename,'format':suffix,
-            'blocks':blocks,'issues':issues,'characters':count,'parser_version':'native-v1'}
+            'blocks':blocks,'issues':issues,'characters':count,'parser_version':'native-v2'}
 
 def chunks(normalized,max_chars=1200):
-    result=[];heading=normalized['title'];pending=[];size=0
+    result=[];headings=[];pending=[];size=0
     root=normalized['title']
-    def identity():return root if heading==root else root+' · '+heading
+    def path():return [root]+[h['text'] for h in headings if h['text']!=root]
+    def identity():return ' · '.join(path())
+    def provenance(block):
+        return {**block['location'],'heading_path':path()}
     def emit():
         nonlocal pending,size
         if pending:
             text=identity()+'\n'+'\n\n'.join(b['text'] for b in pending)
-            result.append({'title':identity()[:250],'content':text,'location':pending[0]['location'],
-                           'block_ids':[b['id'] for b in pending],'digest':digest(text)})
+            result.append({'title':identity()[:250],'content':text,'location':provenance(pending[0]),
+                           'block_ids':list(dict.fromkeys([h['id'] for h in headings]+[b['id'] for b in pending])),'digest':digest(text)})
         pending=[];size=0
     for block in normalized['blocks']:
         if block['type']=='heading':
-            emit();heading=block['text'];continue
+            emit()
+            level=block.get('level',1)
+            while headings and headings[-1].get('level',1)>=level:headings.pop()
+            headings.append(block);continue
         if block['type']=='table':
             emit();rows=block['rows'];header=rows[0];group=[];start=2
             def emit_rows(group,start):
                 if not group:return
                 text=identity()+'\n'+' | '.join(header)+'\n'+'\n'.join(' | '.join(row) for row in group)
-                result.append({'title':identity()[:250],'content':text,'location':{**block['location'],'row_start':start,'row_end':start+len(group)-1},'block_ids':[block['id']],'digest':digest(text)})
+                result.append({'title':identity()[:250],'content':text,'location':{**provenance(block),'row_start':start,'row_end':start+len(group)-1},'block_ids':[h['id'] for h in headings]+[block['id']],'digest':digest(text)})
             for n,row in enumerate(rows[1:],2):
                 if group and sum(len(' | '.join(r)) for r in group)+len(' | '.join(row))>max_chars:
                     emit_rows(group,start);group=[];start=n

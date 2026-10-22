@@ -1,0 +1,16 @@
+{
+  "schema":"salescare.case-evaluation.v1",
+  "note":"Additional scenarios frozen after the initial S05 holdout exposed consecutive-turn promotion, before implementing the cooldown fix. Initial holdout results remain separately reported.",
+  "cases":[
+    {"id":"H01","split":"reserve-v2","messages":["我们是物流企业","想了解官网建设","希望介绍品牌形象"],"expected":["logistics"]},
+    {"id":"H02","split":"reserve-v2","messages":["我们经营家电售后服务","要做小程序","希望给会员提供报修入口，预算上限三千"],"expected":["member"]},
+    {"id":"H03","split":"reserve-v2","messages":["有案例吗"],"expected":[]},
+    {"id":"H04","split":"reserve-v2","messages":["请给我工业外贸官网案例","改成家电会员小程序","还需要用户社区"],"expected":["member"]},
+    {"id":"H05","split":"reserve-v2","messages":["我们是电力企业","希望做官网","先介绍品牌，预算还不确定"],"expected":["energy"]},
+    {"id":"H06","split":"reserve-v2","only":["export"],"change":"url_external","messages":["想看工业外贸官网案例"],"expected":[]},
+    {"id":"H07","split":"reserve-v2","policy":{"max_items":2},"messages":["工业设备企业想看品牌官网案例"],"expected":["export","industrial"]},
+    {"id":"H08","split":"reserve-v2","messages":["要做工业外贸官网","主要面向海外客户","希望展示设备","素材我们整理","可以介绍维护流程吗","品牌介绍也会准备"],"expected":["industrial"]},
+    {"id":"H09","split":"reserve-v2","messages":["想看物流企业品牌官网案例","以后不要推荐，只回答问题","我们可以准备物流服务资料"],"expected":[]},
+    {"id":"H10","split":"reserve-v2","messages":["想看电力企业品牌官网案例","另一个官网项目，客户行业未知","功能也还没确定"],"expected":[]}
+  ]
+}

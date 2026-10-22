@@ -1,6 +1,7 @@
 """Integration tests use an isolated real PostgreSQL database, never the pilot data."""
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,16 +13,18 @@ sys.path.insert(0,str(ROOT))
 from server.model_gateway import protect
 
 runtime=ROOT/'.mvp-runtime'
-base=json.loads((runtime/'config.json').read_text('utf-8'))
+base=json.loads(Path(os.environ.get('SALESCARE_TEST_BASE_CONFIG',runtime/'config.json')).read_text('utf-8'))
 owner=protect(base['admin_database_url_sealed'],decrypt=True).replace('postgresql+psycopg:','postgresql:')
-with psycopg.connect(owner.rsplit('/',1)[0]+'/postgres',autocommit=True) as conn:
-    if not conn.execute("SELECT 1 FROM pg_database WHERE datname='salescare_mvp_test'").fetchone():conn.execute('CREATE DATABASE salescare_mvp_test')
+test_db=os.environ.get('SALESCARE_TEST_DATABASE_NAME','salescare_mvp_test')
+assert re.fullmatch(r'salescare_(?:mvp_test|case_test_[a-f0-9]{12})',test_db), 'Only isolated test databases are allowed'
+with psycopg.connect(owner.rsplit('/',1)[0]+'/postgres',autocommit=True,connect_timeout=5) as conn:
+    if not conn.execute('SELECT 1 FROM pg_database WHERE datname=%s',(test_db,)).fetchone():conn.execute('CREATE DATABASE '+test_db)
 test_config=dict(base)
 for key in ('admin_database_url','database_url'):
-    value=protect(base[key+'_sealed'],decrypt=True).rsplit('/',1)[0]+'/salescare_mvp_test'
+    value=protect(base[key+'_sealed'],decrypt=True).rsplit('/',1)[0]+'/'+test_db
     test_config[key+'_sealed']=protect(value)
 test_config['mode']='test'
-config_file=runtime/'test-config.json';config_file.write_text(json.dumps(test_config),'utf-8')
+config_file=runtime/('test-config.json' if test_db=='salescare_mvp_test' else test_db+'-config.json');config_file.write_text(json.dumps(test_config),'utf-8')
 os.environ['SALESCARE_MVP_CONFIG']=str(config_file)
 subprocess.run([sys.executable,'-m','alembic','-c','mvp/alembic.ini','upgrade','head'],cwd=ROOT,check=True,capture_output=True)
 

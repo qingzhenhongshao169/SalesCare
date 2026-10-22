@@ -12,6 +12,7 @@ from .security import serialize
 from .service import audit,risk,redacted_text
 from .document_parser import FORMATS,normalize,chunks,ParseError
 from .knowledge_engine import DEFAULT,fingerprint,embed,hybrid,EngineError
+from .knowledge_provenance import build_manifest,vector_digest
 from server.model_gateway import protect
 
 ERRORS={'unsupported':'暂不支持此格式，请使用PDF、DOCX、XLSX、CSV、PPTX、TXT或Markdown。',
@@ -23,7 +24,15 @@ ERRORS={'unsupported':'暂不支持此格式，请使用PDF、DOCX、XLSX、CSV�
         'encoding':'无法识别文字编码。','chunk_limit':'分块数量超过限制，请拆分文件。',
         'local_model_failed':'本地模型未能运行，请检测知识检索配置。',
         'embedding_input_limit':'部分标题或表格行过长，超过本地模型输入限制，请拆分；原件和标准化内容已保留。',
-        'embedding_key_missing':'请在知识检索配置中填写Embedding密钥。','failed':'处理失败，请检查文件后重试。'}
+        'embedding_key_missing':'请在知识检索配置中填写Embedding密钥。','failed':'处理失败，请检查文件后重试。',
+        'config_changed':'构建期间检索配置变化，请按新配置重试。',
+        'source_integrity':'原件摘要不一致，请核对后重新上传。',
+        'chunk_integrity':'分块内容校验不一致，请重建此资料。',
+        'vector_integrity':'向量校验不一致，请重建此资料。',
+        'vector_dimension_changed':'模型返回的向量维度发生变化，请核对配置后重建。',
+        'lease_exhausted':'处理任务多次中断，已停止自动重试。请检查进程和文件后手动重试。',
+        'provider_connection':'模型连接暂时失败，请稍后重试。',
+        'provider_429':'模型服务限流，请稍后重试。'}
 
 def chunk_keywords(text):
     return list(dict.fromkeys(re.findall(r'(?<![A-Za-z0-9_-])[A-Z0-9][A-Z0-9_-]{2,}(?![A-Za-z0-9_-])',text)))[:30]
@@ -72,21 +81,27 @@ def document_view(s,tid,doc):
         job=s.scalar(rows(s,KBJob,tid).where(KBJob.version_id==v.id).order_by(KBJob.created_at.desc()).limit(1))
         result['versions'].append({'id':v.id,'number':v.number,'status':v.status,'issues':v.issues,
             'blocks':len(v.normalized.get('blocks',[])),'characters':v.normalized.get('characters',0),
+            'build':v.build_manifest or {},
             'chunk_count':s.scalar(select(__import__('sqlalchemy').func.count()).select_from(KBChunk).where(KBChunk.tenant_id==tid,KBChunk.version_id==v.id)),
-            'job':{'status':job.status,'stage':job.stage,'progress':job.progress,'error':ERRORS.get(job.error,'模型或文件处理失败，请检测配置。') if job.error else ''} if job else None})
+            'job':{'status':job.status,'stage':job.stage,'progress':job.progress,'attempts':job.attempts,
+                   'max_attempts':3,'retry_at':job.lease_until if job.status=='pending' and job.error else None,
+                   'error':ERRORS.get(job.error,'模型或文件处理失败，请检测配置。') if job.error else ''} if job else None})
     return result
 
-def process(tid,jid):
+def process(tid,jid,lease_token=None):
     with transaction(tid) as s:
-        job=locked(s,KBJob,tid,jid);version=s.get(KBDocumentVersion,(tid,job.version_id));doc=s.get(KBDocument,(tid,version.document_id))
+        job=locked(s,KBJob,tid,jid)
+        if not job or job.status!='leased' or job.lease_until<=__import__('time').time() or (lease_token is not None and job.lease_token!=lease_token):return
+        version=s.get(KBDocumentVersion,(tid,job.version_id));doc=s.get(KBDocument,(tid,version.document_id))
         if doc.deleted:job.status='cancelled';return
         cfg,keys=engine_config(s,tid);fp=fingerprint(cfg);path=storage_path(version.storage_key);filename=doc.filename
-        job.stage='parsing';job.progress=10;version.status='processing';token=job.attempts
+        job.stage='parsing';job.progress=10;version.status='processing';token=job.lease_token;source_digest=version.digest
     try:
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=source_digest:raise ParseError('source_integrity')
         normalized=normalize(path,filename);pieces=chunks(normalized,max_chars=360)
         with transaction(tid) as s:
             job=locked(s,KBJob,tid,jid)
-            if job.status!='leased' or job.attempts!=token:return
+            if job.status!='leased' or job.lease_token!=token or job.lease_until<=__import__('time').time():return
             job.stage='embedding';job.progress=35
             version=s.get(KBDocumentVersion,(tid,job.version_id));version.normalized=normalized;version.issues=normalized['issues']
         vectors=[]
@@ -94,26 +109,36 @@ def process(tid,jid):
             vectors.extend(embed([x['content'] for x in pieces[start:start+16]],cfg,keys))
             with transaction(tid) as s:
                 job=locked(s,KBJob,tid,jid)
-                if job.status!='leased' or job.attempts!=token:return
+                if job.status!='leased' or job.lease_token!=token or job.lease_until<=__import__('time').time():return
                 job.progress=35+int(55*min(start+16,len(pieces))/len(pieces));job.lease_until=__import__('time').time()+300
         with transaction(tid) as s:
             job=locked(s,KBJob,tid,jid);v=s.get(KBDocumentVersion,(tid,job.version_id));doc=s.get(KBDocument,(tid,v.document_id))
-            if job.status!='leased' or job.attempts!=token or doc.deleted:return
+            if job.status!='leased' or job.lease_token!=token or job.lease_until<=__import__('time').time() or doc.deleted:return
             current,_=engine_config(s,tid)
             if fingerprint(current)!=fp:raise EngineError('config_changed')
             s.execute(delete(KBChunk).where(KBChunk.tenant_id==tid,KBChunk.version_id==v.id))
+            built=[]
+            if len(vectors)!=len(pieces):raise EngineError('vector_count')
             for n,(piece,vector) in enumerate(zip(pieces,vectors)):
-                s.add(KBChunk(tenant_id=tid,document_id=doc.id,version_id=v.id,position=n,title=piece['title'],content=piece['content'],location={**piece['location'],'block_ids':piece['block_ids']},digest=piece['digest'],vector=vector))
+                c=KBChunk(tenant_id=tid,document_id=doc.id,version_id=v.id,position=n,title=piece['title'],content=piece['content'],location={**piece['location'],'block_ids':piece['block_ids']},digest=piece['digest'],vector=vector,vector_digest=vector_digest(vector))
+                s.add(c);built.append(c)
+            try:v.build_manifest=build_manifest(tid,v,built,fp,cfg['embedding_mode'],normalized['parser_version'])
+            except ValueError as exc:raise EngineError(str(exc)) from None
             doc.title=normalized['title'];v.index_fingerprint=fp;v.status='ready';job.status='done';job.stage='ready';job.progress=100;job.lease_until=0
             audit(s,tid,'knowledge-worker','document.ready',doc.id,{'version':v.number,'chunks':len(pieces)})
     except Exception as exc:
         code=str(exc) if isinstance(exc,(ParseError,EngineError)) else 'failed'
         with transaction(tid) as s:
             job=locked(s,KBJob,tid,jid)
-            if job.attempts!=token or job.status!='leased':return
-            job.status='failed';job.stage='failed';job.error=code if re.fullmatch(r'[a-z_0-9]{1,60}',code) else 'failed';job.lease_until=0
-            s.get(KBDocumentVersion,(tid,job.version_id)).status='failed'
-            audit(s,tid,'knowledge-worker','document.failed',job.version_id,{'reason':job.error})
+            if job.lease_token!=token or job.status!='leased' or job.lease_until<=__import__('time').time():return
+            retryable=code in ('provider_connection','provider_429','provider_500','provider_502','provider_503','provider_504')
+            retry=retryable and job.attempts<3
+            job.status='pending' if retry else 'failed';job.stage='retry_wait' if retry else 'failed'
+            job.error=code if re.fullmatch(r'[a-z_0-9]{1,60}',code) else 'failed'
+            job.lease_until=__import__('time').time()+min(120,5*2**job.attempts) if retry else 0
+            job.lease_token=''
+            s.get(KBDocumentVersion,(tid,job.version_id)).status='queued' if retry else 'failed'
+            audit(s,tid,'knowledge-worker','document.retry_scheduled' if retry else 'document.failed',job.version_id,{'reason':job.error,'attempts':job.attempts})
 
 def publish(p,vid,confirm_issues=False):
     tid=p['tenant']
@@ -125,6 +150,14 @@ def publish(p,vid,confirm_issues=False):
         if v.issues and not confirm_issues:raise HTTPException(409,'存在解析提示，请核对并确认后发布。')
         pieces=list(s.scalars(rows(s,KBChunk,tid).where(KBChunk.version_id==vid).order_by(KBChunk.position)))
         if not pieces:raise HTTPException(409,'此版本没有可发布分块。')
+        cfg,_=engine_config(s,tid)
+        if v.index_fingerprint!=fingerprint(cfg):raise HTTPException(409,'Embedding配置已变化，请重建候选版本后发布。')
+        try:
+            checked=build_manifest(tid,v,pieces,v.index_fingerprint,cfg['embedding_mode'],v.normalized.get('parser_version','native-v1'))
+        except ValueError:raise HTTPException(409,'知识构建校验失败，请重建此版本后发布。') from None
+        if v.build_manifest and checked!=v.build_manifest:raise HTTPException(409,'构建清单与当前分块不一致，请重建候选版本。')
+        # Legacy versions acquire a manifest only after explicit publication checks.
+        v.build_manifest=checked
         # Minimal conflict signal for the same named document; use an explicit
         # replacement version instead of silently publishing two contradictory copies.
         date_pattern=r'\d{1,2}月\d{1,2}日\s*[至到—-]\s*(?:\d{1,2}月)?\d{1,2}日'

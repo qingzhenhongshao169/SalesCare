@@ -30,9 +30,11 @@ try:
         revision=conn.execute('SELECT version_num FROM alembic_version').fetchone()[0]
         count=conn.execute("SELECT count(*) FROM pg_class WHERE relrowsecurity AND relforcerowsecurity AND relnamespace='public'::regnamespace").fetchone()[0]
         defaults=conn.execute("SELECT count(*) FROM information_schema.columns WHERE (table_name='usage_events' AND column_name='detail' OR table_name='outbox_events' AND column_name='last_error') AND column_default IS NOT NULL").fetchone()[0]
-        assert revision=='0009_service_mode' and count==28 and defaults==2
+        provenance_defaults=conn.execute("SELECT count(*) FROM information_schema.columns WHERE (table_name='kb_document_versions' AND column_name='build_manifest' OR table_name='kb_chunks' AND column_name='vector_digest' OR table_name IN ('kb_jobs','ai_jobs') AND column_name='lease_token') AND column_default IS NOT NULL").fetchone()[0]
+        quick_default=conn.execute("SELECT column_default FROM information_schema.columns WHERE table_name='knowledge' AND column_name='quick_reply'").fetchone()[0]
+        assert revision=='0011_quick_reply' and count==28 and defaults==2 and provenance_defaults==4 and quick_default is not None
     output={'fresh_migration':True,'revision':revision,'force_rls_tables':count,'additive_defaults_preserve_old_inserts':True,'scope':'Disposable empty database; not a pilot data restore or disaster-recovery test.'}
-    (ROOT/'docs/channel-migration-check.json').write_text(json.dumps(output,indent=2),'utf-8');print(json.dumps(output))
+    (ROOT/'docs/response-speed-migration-check.json').write_text(json.dumps(output,indent=2),'utf-8');print(json.dumps(output))
 finally:
     # Only the empty, random database created above is eligible for cleanup.
     with psycopg.connect(root_url,autocommit=True) as conn:conn.execute('DROP DATABASE '+name)

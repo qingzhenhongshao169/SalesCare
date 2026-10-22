@@ -80,6 +80,7 @@ class CompanySettings(Scoped, Base):
     notification_cipher: Mapped[str] = mapped_column(Text, default='')
     notification_kind: Mapped[str] = mapped_column(String(30), default='none')
     notification_options_cipher: Mapped[str] = mapped_column(Text, default='')
+    case_recommendation_policy: Mapped[dict] = mapped_column(JSON, default=dict)
 
 class Conversation(Scoped, Base):
     __tablename__ = 'conversations'
@@ -102,6 +103,7 @@ class Message(Scoped, Base):
     actor_name: Mapped[str] = mapped_column(String(120), default='')
     text: Mapped[str] = mapped_column(Text)
     citations: Mapped[list] = mapped_column(JSON, default=list)
+    case_recommendations: Mapped[list] = mapped_column(JSON, default=list)
     received_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     __table_args__ = (ForeignKeyConstraint(['tenant_id','conversation_id'],['conversations.tenant_id','conversations.id']),
                       UniqueConstraint('tenant_id','conversation_id','client_id'),
@@ -165,6 +167,8 @@ class Knowledge(Scoped, Base):
     approvals: Mapped[list] = mapped_column(JSON, default=list)
     expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     digest: Mapped[str] = mapped_column(String(64), default='')
+    quick_reply: Mapped[dict] = mapped_column(JSON, default=dict)
+    case_recommendation: Mapped[dict] = mapped_column(JSON, default=dict)
     __table_args__ = (UniqueConstraint('tenant_id','family','version'),)
 
 class KnowledgeSource(Scoped, Base):
@@ -212,6 +216,7 @@ class KBDocumentVersion(Scoped, Base):
     normalized: Mapped[dict] = mapped_column(JSON,default=dict)
     issues: Mapped[list] = mapped_column(JSON,default=list)
     index_fingerprint: Mapped[str] = mapped_column(String(64),default='')
+    build_manifest: Mapped[dict] = mapped_column(JSON,default=dict)
     reviewer_id: Mapped[str | None] = mapped_column(String(40),nullable=True)
     approvals: Mapped[list] = mapped_column(JSON,default=list)
     __table_args__ = (ForeignKeyConstraint(['tenant_id','document_id'],['kb_documents.tenant_id','kb_documents.id']),UniqueConstraint('tenant_id','document_id','number'))
@@ -226,6 +231,7 @@ class KBChunk(Scoped, Base):
     location: Mapped[dict] = mapped_column(JSON,default=dict)
     digest: Mapped[str] = mapped_column(String(64))
     vector: Mapped[list] = mapped_column(JSON,default=list)
+    vector_digest: Mapped[str] = mapped_column(String(64),default='')
     __table_args__ = (ForeignKeyConstraint(['tenant_id','version_id'],['kb_document_versions.tenant_id','kb_document_versions.id']),ForeignKeyConstraint(['tenant_id','document_id'],['kb_documents.tenant_id','kb_documents.id']))
 
 class KBJob(Scoped, Base):
@@ -237,6 +243,7 @@ class KBJob(Scoped, Base):
     error: Mapped[str] = mapped_column(String(60),default='')
     attempts: Mapped[int] = mapped_column(default=0)
     lease_until: Mapped[float] = mapped_column(Float,default=0)
+    lease_token: Mapped[str] = mapped_column(String(40),default='')
     __table_args__ = (ForeignKeyConstraint(['tenant_id','version_id'],['kb_document_versions.tenant_id','kb_document_versions.id']),)
 
 class KBEngineConfig(Scoped, Base):
@@ -264,6 +271,7 @@ class AIJob(Scoped, Base):
     message_id: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(20), default='pending')
     lease_until: Mapped[float] = mapped_column(Float, default=0)
+    lease_token: Mapped[str] = mapped_column(String(40),default='')
     attempts: Mapped[int] = mapped_column(default=0)
     __table_args__ = (ForeignKeyConstraint(['tenant_id','conversation_id'],['conversations.tenant_id','conversations.id']),
                       ForeignKeyConstraint(['tenant_id','message_id'],['messages.tenant_id','messages.id']),
@@ -368,5 +376,22 @@ class ChannelDelivery(Scoped, Base):
                       ForeignKeyConstraint(['tenant_id','conversation_id'],['conversations.tenant_id','conversations.id']),
                       ForeignKeyConstraint(['tenant_id','message_id'],['messages.tenant_id','messages.id']),
                       UniqueConstraint('tenant_id','message_id'))
+
+class AnalyticsRecord(Scoped, Base):
+    __tablename__ = 'analytics_records'
+    data_kind: Mapped[str] = mapped_column(String(20), default='unknown')
+    resolution: Mapped[str] = mapped_column(String(20), default='unknown')
+    reviewed_sequence: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_message_id: Mapped[str] = mapped_column(String(40), default='')
+    confirmed_all: Mapped[bool] = mapped_column(Boolean, default=False)
+    reviews: Mapped[dict] = mapped_column(JSON, default=dict)
+    __table_args__ = (ForeignKeyConstraint(['tenant_id','id'],['conversations.tenant_id','conversations.id']),)
+
+class AnswerFeedback(Scoped, Base):
+    __tablename__ = 'answer_feedback'
+    conversation_id: Mapped[str] = mapped_column(String(40), index=True)
+    value: Mapped[str] = mapped_column(String(20))
+    __table_args__ = (ForeignKeyConstraint(['tenant_id','id'],['messages.tenant_id','messages.id']),
+                      ForeignKeyConstraint(['tenant_id','conversation_id'],['conversations.tenant_id','conversations.id']),)
 
 SCOPED_TABLES = [t.name for t in Base.metadata.sorted_tables if 'tenant_id' in t.c and t.name != 'auth_sessions']

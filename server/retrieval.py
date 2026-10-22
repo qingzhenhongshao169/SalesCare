@@ -34,20 +34,36 @@ def query_hints(text):
     return [(words,title) for pattern,words,title in rules if re.search(pattern,text,re.I)]
 
 
-def retrieve(d, channel, text, stamp, limit=4):
-    if re.search(r"天气|下雨|气温|足球|彩票|股票代码", text):
-        return []
-    records = eligible(d, channel, stamp)
-    hints=query_hints(text)
-    query = set(tokens(text+' '+' '.join(words for words,_ in hints)))
-    docs = [Counter(tokens(k["title"]+" "+" ".join(k["keywords"])+" "+k["content"])) for k in records]
-    frequencies = Counter(t for doc in docs for t in doc)
-    avg = sum(sum(doc.values()) for doc in docs)/max(1, len(docs))
-    scores = []
-    for k, doc in zip(records, docs):
+class LexicalScorer:
+    """Two-pass BM25 statistics bounded by query terms, shared with legacy retrieval."""
+    def __init__(self, text):
+        self.text = text
+        self.hints = query_hints(text)
+        self.query = set(tokens(text+' '+' '.join(words for words,_ in self.hints)))
+        self.frequencies = Counter()
+        self.count = 0
+        self.total = 0
+
+    @staticmethod
+    def document(k):
+        return Counter(tokens(k['title']+' '+' '.join(k['keywords'])+' '+k['content']))
+
+    def observe(self, k):
+        doc = self.document(k)
+        self.count += 1
+        self.total += sum(doc.values())
+        self.frequencies.update(set(doc) & self.query)
+
+    @property
+    def average(self):
+        return self.total/max(1, self.count)
+
+    def score(self, k):
+        text, hints, query = self.text, self.hints, self.query
+        doc = self.document(k)
         n = sum(doc.values())
-        score = sum(math.log(1+(len(docs)-frequencies[t]+.5)/(frequencies[t]+.5)) *
-                    doc[t]*2.2/(doc[t]+1.2*(.25+.75*n/max(1, avg))) for t in query if doc[t])
+        score = sum(math.log(1+(self.count-self.frequencies[t]+.5)/(self.frequencies[t]+.5)) *
+                    doc[t]*2.2/(doc[t]+1.2*(.25+.75*n/max(1, self.average))) for t in query if doc[t])
         hits = [word for word in k["keywords"] if word.lower() in text.lower()]
         generic = {"geo", "seo", "网站", "官网", "是什么", "区别", "济南", "增长", "内容", "功能"}
         score += sum((1 if word.lower() in generic else 2+min(len(word), 7)) for word in hits)
@@ -69,11 +85,22 @@ def retrieve(d, channel, text, stamp, limit=4):
         if "geo" in text.lower() and re.search(r"什么是|是什么",text) and "GEO 是什么" in k["title"]: score += 20
         # Preparation questions need the materials FAQ ahead of broad website/GEO pages.
         if re.search(r"准备.{0,10}(?:资料|材料|什么)|(?:资料|材料).{0,8}准备",text) and re.search(r"准备.{0,8}(?:资料|材料)",k["title"]): score += 32
-        if score >= 6 and (hits or len(set(doc)&query) >= 3): scores.append((score,k))
+        return score if score >= 6 and (hits or len(set(doc)&query) >= 3) else None
+
+
+def retrieve(d, channel, text, stamp, limit=4):
+    if re.search(r"天气|下雨|气温|足球|彩票|股票代码", text):
+        return []
+    records = eligible(d, channel, stamp)
+    scorer = LexicalScorer(text)
+    for record in records:
+        scorer.observe(record)
+    scores = [(score, k) for k in records if (score := scorer.score(k)) is not None]
     scores.sort(key=lambda x:x[0], reverse=True)
-    return [k for _,k in scores[:limit]]
+    return [k for _, k in scores[:limit]]
 
 
 def citation(k):
     return {"id":k["id"], "title":k["title"], "version":k["version"], "url":k.get("source_url"),
-            **({'location':k['source_location']} if k.get('source_location') else {})}
+            **({'location':k['source_location']} if k.get('source_location') else {}),
+            **({'evidence':k['evidence']} if k.get('evidence') else {})}

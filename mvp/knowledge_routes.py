@@ -105,7 +105,7 @@ def retry(vid:str,p=Depends(auth)):
         doc=s.get(KBDocument,(p['tenant'],v.document_id))
         if doc.deleted:raise HTTPException(404,'资料不存在。')
         job=s.scalar(rows(s,KBJob,p['tenant']).where(KBJob.version_id==vid))
-        job.status='pending';job.stage='queued';job.progress=0;job.error='';job.lease_until=0;job.attempts=0;v.status='queued'
+        job.status='pending';job.stage='queued';job.progress=0;job.error='';job.lease_until=0;job.attempts=0;job.lease_token='';v.status='queued'
         audit(s,p['tenant'],p['id'],'document.retry',doc.id)
         return {'ok':True}
 
@@ -252,6 +252,9 @@ def test_engine(p=Depends(auth)):
 def public_source(kid:str,p=Depends(auth)):
     require(p,'visitor')
     with transaction(p['tenant']) as s:
+        from .knowledge_retrieval import PostgresScan
+        if not list(PostgresScan(s,p['tenant'],p.get('channel_id')).scan(ids=[kid])):
+            raise HTTPException(404,'资料已撤回、过期或不可访问。')
         chunk=s.get(KBChunk,(p['tenant'],kid));item=s.get(Knowledge,(p['tenant'],kid))
         if not chunk or not item or item.status!='published':raise HTTPException(404,'资料已撤回或不存在。')
         doc=s.get(KBDocument,(p['tenant'],chunk.document_id))

@@ -20,6 +20,27 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #0B
 .message-body{max-width:75%;min-width:0;flex:none;width:auto}.message-meta{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:12px;margin-bottom:6px;color:var(--muted);line-height:1.4}.message-meta time{font-size:12px;color:var(--muted)}.message-meta small{font-size:11px}.bubble{display:inline-block;padding:12px 16px;border:1px solid #E9EEEA;border-radius:0 10px 10px;background:#F8FAF8;font-size:15px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);max-width:100%}
 .message.visitor{justify-content:flex-start;flex-direction:row-reverse}.message.visitor .message-body{text-align:right}.message.visitor .message-meta{justify-content:flex-end}.message.visitor .bubble{text-align:left;background:var(--accent-light);border-color:#D4EBE3;border-radius:10px 0 10px 10px}.message.human .bubble{background:#F4F8FB;border-color:#E1EBF1}
 .citations{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 10px;font-size:12px;line-height:1.6;color:var(--accent);margin-top:8px}.citations a{text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}.citations svg{align-self:center}
+.case-recommendations{display:grid;gap:10px;margin-top:12px;text-align:left;max-width:480px}
+.case-section-title{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--secondary)}
+.case-card{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px;background:white;min-width:0}
+.case-card-label{font-size:11px;color:var(--muted)}
+.case-card h3{font-size:15px;line-height:1.6;margin:5px 0;color:var(--ink)}
+.case-card p{font-size:13px;line-height:1.8;margin:5px 0;overflow-wrap:anywhere}
+.case-card .case-match-reason{color:var(--secondary)}
+.case-card a{display:inline-flex;align-items:center;gap:5px;min-height:36px;font-size:13px;color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.case-card a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+.case-disclaimer{font-size:11px;line-height:1.8;color:var(--muted);margin:0}
+.case-editor{padding:14px 0;border-bottom:1px solid var(--line);margin-bottom:14px}
+.case-editor summary{cursor:pointer;min-height:36px;font-weight:600;font-size:14px;line-height:1.7}
+.case-editor>p{font-size:13px;line-height:1.8;margin:8px 0}
+.case-editor fieldset{border:1px solid var(--line);border-radius:6px;margin:12px 0;padding:10px}
+.case-editor legend{font-size:13px;padding:0 5px}
+.case-tag-options{display:flex;flex-wrap:wrap;gap:5px 16px}
+.case-tag-options label{font-size:12px;min-height:32px}
+.case-weight-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.case-catalogue-import{margin-bottom:12px}
+.case-catalogue-import p{font-size:13px;margin-top:6px}
+@media(max-width:600px){.case-recommendations{max-width:100%}.case-card{padding:12px}.case-weight-grid{grid-template-columns:1fr}}
 .jump-latest{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:white;box-shadow:0 2px 12px #103D3515;z-index:1}
 .public-chat .composer{padding:12px 16px 8px;border:0;background:white;flex-shrink:0}.suggestions{gap:8px;display:flex;flex-wrap:wrap;margin-bottom:10px}.public-chat .suggestions button{padding:7px 10px;min-height:36px;font-size:12px;background:white;border:1px solid var(--line);color:var(--accent);border-radius:8px}.suggestions button:hover{background:var(--accent-light)}
 .input-surface{border:1px solid var(--line);border-radius:8px;padding:8px 12px}.input-surface:focus-within{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.public-chat .composer textarea,.mvp-conversation textarea{min-height:56px;max-height:144px;height:56px;resize:none;display:block;font-size:15px;line-height:24px;padding:4px 0;width:100%;border:0;background:white}.public-chat .composer textarea:focus{outline:none}.public-chat .composer-bottom{margin-top:4px;gap:10px}.composer-bottom>span{font-size:12px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}.composer-bottom .btn{height:40px;flex-shrink:0}.public-chat .chat-bottom{background:white;border:0;gap:20px;padding:4px 16px 8px;flex-shrink:0}.chat-bottom>button{min-height:36px;font-size:12px;color:var(--secondary)}.chat-bottom>button:hover{color:var(--accent)}

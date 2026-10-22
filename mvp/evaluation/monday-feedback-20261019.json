@@ -1,0 +1,26 @@
+{
+  "version":"monday-feedback-v1",
+  "scope":"Synthetic regression expectations frozen before executing this matrix; no market validation or general semantic accuracy claim.",
+  "cases":[
+    {"text":"我们做机械出口，想建英文官网。请说说要准备什么资料，也给个相关案例；预算还没定。","tasks":["materials","cases"],"direction":"selected","budget":"unset"},
+    {"text":"想建英文网站，资料怎么准备？顺便给个案例。","tasks":["materials","cases"],"direction":"selected"},
+    {"text":"外贸官网需要哪些材料，也给我看看作品。","tasks":["materials","cases"],"direction":"selected"},
+    {"text":"做工业官网，列个资料清单，再分享一个案例。","tasks":["materials","cases"],"direction":"selected"},
+    {"text":"官网资料要整理哪些？能发一个相关案例吗？","tasks":["materials","cases"],"direction":"selected"},
+    {"text":"具体做网站还是系统还没定","tasks":["compare_directions"],"direction":"undecided"},
+    {"text":"官网和业务系统二选一，没决定","tasks":["compare_directions"],"direction":"undecided"},
+    {"text":"网站还是CRM拿不准，给点建议","tasks":["compare_directions"],"direction":"undecided"},
+    {"text":"网站还是系统未定，先不要推荐案例","tasks":["compare_directions"],"direction":"undecided"},
+    {"text":"官网要准备哪些资料？预算目前不确定","tasks":["materials"],"direction":"selected","budget":"unset"},
+    {"text":"想做官网，预算未定","tasks":[],"direction":"selected","budget":"unset"},
+    {"text":"想建英文官网，预算8w","tasks":[],"direction":"selected","budget":"set"},
+    {"text":"是预算变9万","tasks":[],"direction":"unknown","budget":"set"},
+    {"text":"现在变9万了","tasks":[],"direction":"unknown","budget":"unknown"},
+    {"text":"别推荐案例，先整理需求","tasks":[],"direction":"unknown"},
+    {"text":"案例链接打不开","tasks":[],"direction":"unknown"},
+    {"text":"以后再看官网案例，现在先问资料","tasks":[],"direction":"unknown"},
+    {"text":"你们给物流公司做过运输调度系统吗？我不要展示型官网","tasks":["cases"],"direction":"selected"},
+    {"text":"工业设备官网的产品参数很多，怎样让客户快速找到适合的型号？","tasks":[],"direction":"selected"},
+    {"text":"现在确定先做官网，业务系统以后再考虑","tasks":[],"direction":"selected"}
+  ]
+}

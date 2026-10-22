@@ -29,6 +29,10 @@ from .channels import router as channels_router,channel_for_session
 from .channel_callbacks import router as callback_router
 from .platform import router as platform_router
 from .knowledge_routes import router as knowledge_router
+from .realtime import message_bus
+from .quick_routes import router as quick_router
+from .analytics_routes import router as analytics_router
+from .case_routes import router as case_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -36,13 +40,18 @@ async def lifespan(app):
     with transaction() as session:
         flags=session.execute(text('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).one()
         if any(flags): raise RuntimeError('MVP runtime database role must not bypass RLS')
-    yield
+    message_bus.listener.start()
+    try:yield
+    finally:message_bus.listener.close()
 
 app=FastAPI(title='SalesCare MVP',version='1.0.0',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
 app.include_router(channels_router)
 app.include_router(callback_router)
 app.include_router(platform_router)
 app.include_router(knowledge_router)
+app.include_router(quick_router)
+app.include_router(analytics_router)
+app.include_router(case_router)
 
 class Input(BaseModel): model_config=ConfigDict(extra='forbid')
 
@@ -658,9 +667,13 @@ def visitor_delete(cid:str,p=Depends(auth)):
         c=get_conversation(session,p,cid,for_update=True);withdraw(session,p,c)
         c.name='已删除访客';c.profile={}
         for m in session.scalars(rows(session,Message,p['tenant']).where(Message.conversation_id==cid)):
-            m.text='[用户已删除内容]';m.citations=[];m.actor_name='' if m.role=='visitor' else m.actor_name
+            m.text='[用户已删除内容]';m.citations=[];m.case_recommendations=[];m.actor_name='' if m.role=='visitor' else m.actor_name
         lead=session.scalar(rows(session,Lead,p['tenant']).where(Lead.conversation_id==cid))
         if lead:lead.name='已删除访客'
+        for feedback in session.scalars(rows(session,AnswerFeedback,p['tenant']).where(AnswerFeedback.conversation_id==cid)):session.delete(feedback)
+        annotation=session.get(AnalyticsRecord,(p['tenant'],cid))
+        if annotation:
+            annotation.resolution='unknown';annotation.evidence_message_id='';annotation.confirmed_all=False;annotation.reviews={}
         audit(session,p['tenant'],p['id'],'privacy.deleted',cid)
     return {'ok':True}
 
@@ -672,18 +685,30 @@ async def public_events(cid:str,request:Request,p=Depends(auth)):
     with transaction(p['tenant']) as session:get_conversation(session,p,cid)
     async def stream():
         position=cursor
-        for _ in range(25):
-            if await request.is_disconnected():break
-            try:current=principal(request)
-            except HTTPException:break
-            with transaction(current['tenant']) as session:
-                c=get_conversation(session,current,cid)
-                messages=session.scalars(rows(session,Message,current['tenant']).where(Message.conversation_id==cid,Message.sequence>position).order_by(Message.sequence).limit(100)).all()
-                payload=[serialize(m) for m in messages]
-                if payload:position=payload[-1]['sequence']
-                state=c.state
-            yield f'id: {position}\nevent: messages\ndata: '+json.dumps({'items':payload,'state':state},ensure_ascii=False)+'\n\n'
-            await asyncio.sleep(2)
+        key,wake=message_bus.subscribe(p['tenant'],cid)
+        try:
+            while True:
+                wake.clear()  # Clear before DB read: notifications during the read are retained.
+                if await request.is_disconnected():break
+                try:
+                    current=principal(request)
+                    with transaction(current['tenant']) as session:
+                        c=get_conversation(session,current,cid)
+                        messages=session.scalars(rows(session,Message,current['tenant']).where(Message.conversation_id==cid,Message.sequence>position).order_by(Message.sequence).limit(100)).all()
+                        from .case_recommendations import public_cards
+                        payload=[{**serialize(m),'case_recommendations':public_cards(session,current['tenant'],c.channel_id,m.case_recommendations)} for m in messages]
+                        if payload:position=payload[-1]['sequence']
+                        case_messages=session.scalars(rows(session,Message,current['tenant']).where(
+                            Message.conversation_id==cid,Message.sequence<=position,
+                            func.json_array_length(Message.case_recommendations)>0).order_by(Message.sequence.desc()).limit(100)).all()
+                        case_updates=[{'message_id':m.id,'case_recommendations':public_cards(session,current['tenant'],c.channel_id,m.case_recommendations)} for m in case_messages]
+                        state=c.state
+                except HTTPException:break
+                yield f'id: {position}\nevent: messages\ndata: '+json.dumps({'items':payload,'state':state,'case_updates':case_updates},ensure_ascii=False)+'\n\n'
+                if len(payload)>=100:continue  # Drain backlog without waiting for another notification.
+                try:await asyncio.wait_for(wake.wait(),timeout=2)
+                except asyncio.TimeoutError:pass  # Auth refresh and missed-notification fallback.
+        finally:message_bus.unsubscribe(key,wake)
     return StreamingResponse(stream(),media_type='text/event-stream',headers={'X-Accel-Buffering':'no'})
 
 @app.post('/api/public/conversations/{cid}/received/{sequence}')
@@ -826,7 +851,7 @@ class OfferInput(Input):
     name:str=Field(min_length=1,max_length=120)
     description:str=Field(max_length=2000)
     tags:list[str]=Field(max_length=20)
-    price:float|None=Field(default=None,ge=0)
+    price:float|None=Field(default=None,ge=0,allow_inf_nan=False)
     active:bool=True
     knowledge_id:str|None=Field(default=None,max_length=40)
 
@@ -836,11 +861,20 @@ def put_offer(oid:str,body:OfferInput,p=Depends(auth)):
     with transaction(p['tenant']) as session:
         knowledge=session.get(Knowledge,(p['tenant'],body.knowledge_id)) if body.knowledge_id else None
         if body.active and (not knowledge or knowledge.status!='published' or knowledge.visibility!='public'):raise HTTPException(409,'启用服务需关联已发布对客知识。')
-        if body.price is not None and (not knowledge or knowledge.risk!='high' or str(int(body.price) if float(body.price).is_integer() else body.price) not in knowledge.content):raise HTTPException(409,'价格必须有已审核价格知识依据。')
+        from .offer_evidence import current_offer_records, supports_public_price
+        record=current_offer_records(session,p['tenant'],[body.knowledge_id]).get(body.knowledge_id) if body.knowledge_id else None
+        if body.active and not record:raise HTTPException(409,'知识来源已失效或不适用于公开服务，请重新核对。')
+        if body.active and body.price is not None and (not knowledge or not record or
+                not (knowledge.risk=='high' or record.get('document_id')) or
+                not supports_public_price(record,body.name,body.price)):
+            raise HTTPException(409,'价格需与已审核来源中的服务名称、完整金额及单位对应；条件价或周期价请先核对，不能直接作为统一公开价。')
         offer=session.get(Offer,(p['tenant'],oid))
         if not offer:offer=Offer(tenant_id=p['tenant'],id=uid());session.add(offer)
         for k,v in body.model_dump().items():setattr(offer,k,v)
-        session.flush();audit(session,p['tenant'],p['id'],'offer.updated',offer.id)
+        session.flush()
+        from .knowledge_provenance import evidence_summary
+        audit(session,p['tenant'],p['id'],'offer.updated',offer.id,
+              {'price_source':evidence_summary(record),'price_validation':'explicit-flat-cny-v1'} if body.active and body.price is not None and record else {})
         return serialize(offer)
 
 def public_model(row):
@@ -907,11 +941,12 @@ def dashboard(start:float=0,end:float=0,p=Depends(auth)):
         cs=session.scalars(rows(session,Conversation,tid).where(Conversation.created_at>=start,Conversation.created_at<end)).all()
         tasks=session.scalars(rows(session,Task,tid).where(Task.accepted_at>=start,Task.accepted_at<end)).all()
         due=[t for t in tasks if t.mode=='immediate' and t.deadline_at and t.deadline_at<=time.time() and t.sla!='cancelled']
-        met=sum(bool(t.attempted_at and t.attempted_at<=t.deadline_at) for t in due)
+        met=sum(bool(t.attempted_at and (t.start_at or t.accepted_at)<=t.attempted_at<=t.deadline_at) for t in due)
         scheduled_due=[t for t in tasks if t.mode=='scheduled' and t.deadline_at and t.deadline_at<=time.time() and t.sla!='cancelled']
-        scheduled_met=sum(bool(t.attempted_at and t.attempted_at<=t.deadline_at) for t in scheduled_due)
+        scheduled_met=sum(bool(t.attempted_at and (t.start_at or t.accepted_at)<=t.attempted_at<=t.deadline_at) for t in scheduled_due)
         usage=session.scalars(rows(session,Usage,tid).where(Usage.created_at>=start,Usage.created_at<end)).all()
-        return {'conversations':len(cs),'leads':sum(t.deadline_at is not None for t in tasks),'pending':sum(t.status=='pending' for t in tasks),
+        pending=session.scalar(select(func.count()).select_from(Task).where(Task.tenant_id==tid,Task.status=='pending'))
+        return {'conversations':len(cs),'leads':sum(t.deadline_at is not None for t in tasks),'pending':pending,
                 'due':len(due),'met':met,'rate':round(met/len(due)*100,1) if due else None,
                 'excluded':sum(t.sla=='cancelled' for t in tasks),'breached':sum(t.sla=='breached' for t in tasks),
                 'attempted':sum(t.attempted_at is not None for t in tasks),'reached':sum(t.reached_at is not None for t in tasks),
